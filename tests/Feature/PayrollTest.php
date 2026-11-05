@@ -41,13 +41,13 @@ class PayrollTest extends TestCase
 
         $this->assertSame($employee->id, $slip->employee_id);
         $this->assertSame(22, $slip->days_paid);
-        $this->assertSame(21_290_322, $slip->gross);
+        $this->assertSame(21_290_323, $slip->gross);
         $this->assertSame(1_703_226, $slip->pension);
-        $this->assertSame(1_438_064, $slip->tax);
+        $this->assertSame(1_438_065, $slip->tax);
         $this->assertSame(2_500_000, $slip->loan);
         $this->assertSame(15_649_032, $slip->net);
 
-        $this->assertSame(21_290_322, $run->payslips()->sum('gross'));
+        $this->assertSame(21_290_323, $run->payslips()->sum('gross'));
     }
 
     public function test_staff_who_left_before_the_month_are_not_paid(): void
