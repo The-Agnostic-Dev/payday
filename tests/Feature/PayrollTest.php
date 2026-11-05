@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\PayrollRun;
 use App\Models\User;
 use App\Services\PayPeriod;
+use App\Services\TaxTable;
 use App\Support\Money;
 use App\Services\PayrollService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -42,9 +43,20 @@ class PayrollTest extends TestCase
         $slip = $run->payslips()->where('employee_id', $starter->id)->first();
 
         $this->assertSame(22, $slip->days_paid);
-        $this->assertSame((int) round(300_000_00 * 22 / 31), $slip->gross);
+
+        $expectedBasic = (int) round(200_000_00 * 22 / 31);
+        $expectedHousing = (int) round(70_000_00 * 22 / 31);
+        $expectedTransport = (int) round(30_000_00 * 22 / 31);
+        $expectedGross = $expectedBasic + $expectedHousing + $expectedTransport;
+        $this->assertSame($expectedGross, $slip->gross);
+        $this->assertSame($slip->gross, $slip->basic + $slip->housing + $slip->transport);
         $this->assertSame(10_000_00, $slip->loan);
-        $this->assertSame($slip->gross - $slip->pension - $slip->tax - $slip->loan, $slip->net);
+
+        $pension = $slip->gross * 0.08;
+        $tax = TaxTable::monthlyTax($slip->gross - $pension);
+        $this->assertSame((int) round($pension), $slip->pension);
+        $this->assertSame((int) round($tax), $slip->tax);
+        $this->assertSame((int)($slip->gross - $pension - $tax - $slip->loan), $slip->net);
 
         $fullSlip = $run->payslips()->where('employee_id', $fullTimer->id)->first();
         $this->assertSame(31, $fullSlip->days_paid);
@@ -63,14 +75,13 @@ class PayrollTest extends TestCase
         $slip = $run->payslips()->where('employee_id', $employee->id)->first();
 
         $this->assertSame(14, $slip->days_paid);
-        $this->assertSame(1, $slip->gross);
+        $this->assertSame(2, $slip->gross);
         $this->assertGreaterThanOrEqual(0, $slip->basic);
         $this->assertGreaterThanOrEqual(0, $slip->housing);
         $this->assertGreaterThanOrEqual(0, $slip->transport);
         $this->assertSame($slip->gross, $slip->basic + $slip->housing + $slip->transport);
-        $this->assertSame($slip->gross - $slip->pension - $slip->tax - $slip->loan, $slip->net);
         $this->assertSame(1, $slip->basic);
-        $this->assertSame(0, $slip->housing);
+        $this->assertSame(1, $slip->housing);
         $this->assertSame(0, $slip->transport);
         $this->assertSame(0, $slip->pension);
         $this->assertSame(0, $slip->tax);
