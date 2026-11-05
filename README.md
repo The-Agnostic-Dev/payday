@@ -61,9 +61,8 @@ from the next payroll run; payroll that has already been run keeps the amounts i
 the books, counting their first and last day: gross for the month x days employed / days in the month.
 Someone who starts on the 10th of a 30-day month is paid 21/30.
 
-**Unpaid leave** is taken off for every calendar day it covers in the month, weekends and public
-holidays included, at the same daily rate. Four days of unpaid leave from a Friday to a Monday are four
-days off pay, even though they are only two working days of leave. Annual and sick leave are paid.
+**Unpaid leave** is taken off for every calendar day it covers in the month, weekends and public holidays included, at the same daily rate.
+Four days of unpaid leave from a Friday to a Monday are four days off pay, even though they are only two working days of leave. Annual and sick leave are paid.
 
 **Pension.** The employee contribution is 8% of gross pay for the month (basic + housing + transport,
 after any part-month or unpaid-leave reduction). The employer's share is paid separately and does not

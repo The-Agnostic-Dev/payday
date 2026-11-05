@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Employee;
+use App\Models\LeaveRequest;
+use App\Models\Payslip;
 use App\Models\PayrollRun;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -68,5 +70,55 @@ class PayrollService
     public function discard(PayrollRun $run): void
     {
         $run->delete();
+    }
+
+    public function recomputeUnpaidLeave(): void
+    {
+        $query = Payslip::where('unpaid_leave_days', '>', 0)
+            ->with(['run', 'employee.leaveRequests']);
+
+        $query->get()->each(function (Payslip $payslip) {
+            if (! $payslip->employee || $payslip->days_paid <= 0) {
+                return;
+            }
+
+            $period = $payslip->run->payPeriod();
+            $hasOverlappingUnpaidLeave = $payslip->employee->leaveRequests
+                ->where('type', LeaveRequest::UNPAID)
+                ->contains(fn ($leave) => $leave->start_date <= $period->end && $leave->end_date >= $period->start);
+
+            if (! $hasOverlappingUnpaidLeave) {
+                return;
+            }
+
+            $storedUnpaidLeave = $payslip->unpaid_leave_days;
+            $correctedUnpaidLeave = $this->calculator->unpaidLeaveDays($payslip->employee, $period);
+
+            $correctedUnpaidLeave = min($correctedUnpaidLeave, $storedUnpaidLeave);
+
+            $storedDaysPaid = $payslip->days_paid;
+            $newDaysPaid = ($storedDaysPaid + $storedUnpaidLeave) - $correctedUnpaidLeave;
+            $ratio = $newDaysPaid / $storedDaysPaid;
+
+            $basic = (int) round($payslip->basic * $ratio);
+            $housing = (int) round($payslip->housing * $ratio);
+            $transport = (int) round($payslip->transport * $ratio);
+            $gross = $basic + $housing + $transport;
+            $pension = (int) round($gross * PayrollCalculator::PENSION_RATE);
+            $tax = (int) round(TaxTable::monthlyTax($gross - $pension));
+            $net = $gross - $pension - $tax - $payslip->loan;
+
+            $payslip->update([
+                'days_paid' => $newDaysPaid,
+                'unpaid_leave_days' => $correctedUnpaidLeave,
+                'basic' => $basic,
+                'housing' => $housing,
+                'transport' => $transport,
+                'gross' => $gross,
+                'pension' => $pension,
+                'tax' => $tax,
+                'net' => $net,
+            ]);
+        });
     }
 }

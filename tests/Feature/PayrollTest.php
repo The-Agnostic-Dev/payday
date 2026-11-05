@@ -2,11 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Models\LeaveRequest;
 use App\Models\PayrollRun;
+use App\Models\Employee;
 use App\Models\User;
+use App\Services\PayrollCalculator;
 use App\Services\PayPeriod;
 use App\Support\Money;
 use App\Services\PayrollService;
+use App\Services\TaxTable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -125,5 +129,221 @@ class PayrollTest extends TestCase
         $this->assertStringContainsString('Ada Obi', $lines[1]);
         $this->assertStringContainsString('Bola Ade', $lines[2]);
         $this->assertStringContainsString('TOTAL', $lines[3]);
+    }
+
+    public function test_unpaid_leave_deducts_working_days_not_calendar_days(): void
+    {
+        $grade = $this->grade(['basic' => 200_000_00, 'housing' => 70_000_00, 'transport' => 30_000_00]);
+        $employee = $this->employee(['grade_id' => $grade->id]);
+
+        LeaveRequest::create([
+            'employee_id' => $employee->id,
+            'type' => LeaveRequest::UNPAID,
+            'start_date' => '2026-03-06',
+            'end_date' => '2026-03-09',
+            'days' => 2,
+            'note' => 'Friday to Monday',
+        ]);
+
+        $run = app(PayrollService::class)->createRun(PayPeriod::fromKey('2026-03'));
+        $slip = $run->payslips()->first();
+
+        $this->assertSame(29, $slip->days_paid);
+        $this->assertSame(2, $slip->unpaid_leave_days);
+    }
+
+    public function test_seeded_funmi_unpaid_leave_is_two_working_days(): void
+    {
+        $this->seed();
+        $period = PayPeriod::current();
+        $run = PayrollRun::where('period', $period->key)->first();
+        $funmi = Employee::where('staff_no', 'PD-010')->first();
+
+        $slip = $run->payslips()->where('employee_id', $funmi->id)->first();
+
+        $this->assertNotNull($slip);
+        $this->assertSame(2, $slip->unpaid_leave_days);
+        $this->assertSame($period->daysInMonth() - 2, $slip->days_paid);
+    }
+
+    public function test_recompute_fixes_stored_payslips_created_under_old_calendar_day_rule(): void
+    {
+        $grade = $this->grade(['basic' => 186_000_00, 'housing' => 62_000_00, 'transport' => 31_000_00]);
+        $employee = $this->employee([
+            'grade_id' => $grade->id,
+            'loan_repayment' => 25_000_00,
+            'loan_balance' => 100_000_00,
+        ]);
+        $period = PayPeriod::fromKey('2026-03');
+        $daysInMonth = $period->daysInMonth();
+        $oldDaysPaid = $daysInMonth - 4;
+        $newDaysPaid = $daysInMonth - 2;
+
+        LeaveRequest::create([
+            'employee_id' => $employee->id,
+            'type' => LeaveRequest::UNPAID,
+            'start_date' => '2026-03-06',
+            'end_date' => '2026-03-09',
+            'days' => 2,
+            'note' => 'Friday to Monday',
+        ]);
+
+        $run = app(PayrollService::class)->createRun($period);
+        $slip = $run->payslips()->first();
+        $storedLoan = $slip->loan;
+
+        // Simulate the old rule: stored money reduced by calendar days (4 days).
+        $oldBasic = (int) round($grade->basic * $oldDaysPaid / $daysInMonth);
+        $oldHousing = (int) round($grade->housing * $oldDaysPaid / $daysInMonth);
+        $oldTransport = (int) round($grade->transport * $oldDaysPaid / $daysInMonth);
+        $oldGross = $oldBasic + $oldHousing + $oldTransport;
+        $oldPension = (int) round($oldGross * PayrollCalculator::PENSION_RATE);
+        $oldTax = (int) round(TaxTable::monthlyTax($oldGross - $oldPension));
+        $oldNet = $oldGross - $oldPension - $oldTax - $storedLoan;
+
+        $slip->forceFill([
+            'days_paid' => $oldDaysPaid,
+            'unpaid_leave_days' => 4,
+            'basic' => $oldBasic,
+            'housing' => $oldHousing,
+            'transport' => $oldTransport,
+            'gross' => $oldGross,
+            'pension' => $oldPension,
+            'tax' => $oldTax,
+            'net' => $oldNet,
+        ])->save();
+
+        // Simulate a grade change and a loan balance that has since been fully repaid,
+        // so a live recalculation would return different pay and loan amounts.
+        $newGrade = $this->grade(['basic' => 300_000_00, 'housing' => 100_000_00, 'transport' => 40_000_00]);
+        $employee->forceFill(['grade_id' => $newGrade->id, 'loan_balance' => 0])->save();
+
+        app(PayrollService::class)->recomputeUnpaidLeave();
+
+        $slip->refresh();
+
+        $this->assertSame($newDaysPaid, $slip->days_paid);
+        $this->assertSame(2, $slip->unpaid_leave_days);
+        $this->assertSame($storedLoan, $slip->loan);
+
+        $expectedBasic = (int) round($grade->basic * $newDaysPaid / $daysInMonth);
+        $expectedHousing = (int) round($grade->housing * $newDaysPaid / $daysInMonth);
+        $expectedTransport = (int) round($grade->transport * $newDaysPaid / $daysInMonth);
+        $expectedGross = $expectedBasic + $expectedHousing + $expectedTransport;
+        $expectedPension = (int) round($expectedGross * PayrollCalculator::PENSION_RATE);
+        $expectedTax = (int) round(TaxTable::monthlyTax($expectedGross - $expectedPension));
+        $expectedNet = $expectedGross - $expectedPension - $expectedTax - $storedLoan;
+
+        $this->assertSame($expectedBasic, $slip->basic);
+        $this->assertSame($expectedHousing, $slip->housing);
+        $this->assertSame($expectedTransport, $slip->transport);
+        $this->assertSame($expectedGross, $slip->gross);
+        $this->assertSame($expectedPension, $slip->pension);
+        $this->assertSame($expectedTax, $slip->tax);
+        $this->assertSame($expectedNet, $slip->net);
+    }
+
+    public function test_recompute_skips_payslip_when_unpaid_leave_request_deleted(): void
+    {
+        $grade = $this->grade(['basic' => 200_000_00, 'housing' => 70_000_00, 'transport' => 30_000_00]);
+        $employee = $this->employee(['grade_id' => $grade->id]);
+        $period = PayPeriod::fromKey('2026-03');
+
+        LeaveRequest::create([
+            'employee_id' => $employee->id,
+            'type' => LeaveRequest::UNPAID,
+            'start_date' => '2026-03-06',
+            'end_date' => '2026-03-09',
+            'days' => 2,
+            'note' => 'Friday to Monday',
+        ]);
+
+        $run = app(PayrollService::class)->createRun($period);
+        $slip = $run->payslips()->first();
+
+        $this->assertSame(29, $slip->days_paid);
+        $this->assertSame(2, $slip->unpaid_leave_days);
+
+        $before = $slip->only([
+            'days_paid', 'unpaid_leave_days', 'basic', 'housing', 'transport',
+            'gross', 'pension', 'tax', 'loan', 'net',
+        ]);
+
+        LeaveRequest::where('employee_id', $employee->id)->where('type', LeaveRequest::UNPAID)->delete();
+
+        app(PayrollService::class)->recomputeUnpaidLeave();
+
+        $slip->refresh();
+
+        $this->assertSame($before, $slip->only([
+            'days_paid', 'unpaid_leave_days', 'basic', 'housing', 'transport',
+            'gross', 'pension', 'tax', 'loan', 'net',
+        ]));
+    }
+
+    public function test_recompute_corrects_weekend_only_unpaid_leave_to_zero(): void
+    {
+        $grade = $this->grade(['basic' => 200_000_00, 'housing' => 70_000_00, 'transport' => 30_000_00]);
+        $employee = $this->employee(['grade_id' => $grade->id, 'loan_repayment' => 25_000_00, 'loan_balance' => 100_000_00]);
+        $period = PayPeriod::fromKey('2026-03');
+        $daysInMonth = $period->daysInMonth();
+
+        LeaveRequest::create([
+            'employee_id' => $employee->id,
+            'type' => LeaveRequest::UNPAID,
+            'start_date' => '2026-03-07',
+            'end_date' => '2026-03-08',
+            'days' => 0,
+            'note' => 'Weekend only',
+        ]);
+
+        $run = app(PayrollService::class)->createRun($period);
+        $slip = $run->payslips()->first();
+        $storedLoan = $slip->loan;
+
+        $oldDaysPaid = $daysInMonth - 2;
+        $oldBasic = (int) round($grade->basic * $oldDaysPaid / $daysInMonth);
+        $oldHousing = (int) round($grade->housing * $oldDaysPaid / $daysInMonth);
+        $oldTransport = (int) round($grade->transport * $oldDaysPaid / $daysInMonth);
+        $oldGross = $oldBasic + $oldHousing + $oldTransport;
+        $oldPension = (int) round($oldGross * PayrollCalculator::PENSION_RATE);
+        $oldTax = (int) round(TaxTable::monthlyTax($oldGross - $oldPension));
+        $oldNet = $oldGross - $oldPension - $oldTax - $storedLoan;
+
+        $slip->forceFill([
+            'days_paid' => $oldDaysPaid,
+            'unpaid_leave_days' => 2,
+            'basic' => $oldBasic,
+            'housing' => $oldHousing,
+            'transport' => $oldTransport,
+            'gross' => $oldGross,
+            'pension' => $oldPension,
+            'tax' => $oldTax,
+            'net' => $oldNet,
+        ])->save();
+
+        app(PayrollService::class)->recomputeUnpaidLeave();
+
+        $slip->refresh();
+
+        $this->assertSame($daysInMonth, $slip->days_paid);
+        $this->assertSame(0, $slip->unpaid_leave_days);
+        $this->assertSame($storedLoan, $slip->loan);
+
+        $expectedBasic = $grade->basic;
+        $expectedHousing = $grade->housing;
+        $expectedTransport = $grade->transport;
+        $expectedGross = $expectedBasic + $expectedHousing + $expectedTransport;
+        $expectedPension = (int) round($expectedGross * PayrollCalculator::PENSION_RATE);
+        $expectedTax = (int) round(TaxTable::monthlyTax($expectedGross - $expectedPension));
+        $expectedNet = $expectedGross - $expectedPension - $expectedTax - $storedLoan;
+
+        $this->assertSame($expectedBasic, $slip->basic);
+        $this->assertSame($expectedHousing, $slip->housing);
+        $this->assertSame($expectedTransport, $slip->transport);
+        $this->assertSame($expectedGross, $slip->gross);
+        $this->assertSame($expectedPension, $slip->pension);
+        $this->assertSame($expectedTax, $slip->tax);
+        $this->assertSame($expectedNet, $slip->net);
     }
 }
