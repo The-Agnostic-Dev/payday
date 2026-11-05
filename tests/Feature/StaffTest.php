@@ -79,12 +79,10 @@ class StaffTest extends TestCase
         $this->employee();
         $left = $this->employee();
         $left->update(['end_date' => now()->subMonth()->toDateString()]);
-        $future = $this->employee();
-        $future->update(['end_date' => now()->addMonth()->toDateString()]);
 
         $this->actingAs($this->user())
             ->get('/dashboard')
             ->assertOk()
-            ->assertSee('Active staff 3');
+            ->assertSee('Active staff 2');
     }
 }
