@@ -6,8 +6,10 @@ use App\Models\LeaveRequest;
 use App\Models\PayrollRun;
 use App\Models\Employee;
 use App\Models\User;
+use App\Services\PayrollCalculator;
 use App\Services\PayPeriod;
 use App\Services\PayrollService;
+use App\Services\TaxTable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -117,6 +119,7 @@ class PayrollTest extends TestCase
 
     public function test_seeded_funmi_unpaid_leave_is_two_working_days(): void
     {
+        $this->seed();
         $period = PayPeriod::current();
         $run = PayrollRun::where('period', $period->key)->first();
         $funmi = Employee::where('staff_no', 'PD-010')->first();
