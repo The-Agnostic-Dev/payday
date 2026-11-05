@@ -92,20 +92,24 @@ class PayrollTest extends TestCase
         @$dom->loadHTML($html);
         $xpath = new \DOMXPath($dom);
 
-        $netCells = $xpath->query('//table[@data-testid="payslips"]/tbody//td[contains(@class, "net")]');
+        $parse = fn (string $text): int => (int) round((float) str_replace(['₦', ',', ' '], '', $text) * 100);
+
+        $netCells = $xpath->query('//table[@data-testid="payslips"]/tbody//td[contains(@class, "num") and contains(@class, "net")]');
         $bodySum = 0;
         foreach ($netCells as $cell) {
-            $bodySum += (int) preg_replace('/[^0-9]/', '', $cell->textContent);
+            $bodySum += $parse($cell->textContent);
         }
 
         $expectedNet = (int) $run->payslips()->sum('net');
         $this->assertNotSame((int) $run->payslips()->sum('gross'), $expectedNet);
-        $this->assertSame((int) round($expectedNet / 100), $bodySum);
+        $this->assertSame($expectedNet, $bodySum);
 
-        $totalCell = $xpath->query('//table[@data-testid="payslips"]/tfoot//th[contains(@class, "net-total")]');
+        $totalCell = $xpath->query('//table[@data-testid="payslips"]/tfoot//th[contains(@class, "num") and contains(@class, "net-total")]');
         $this->assertSame(1, $totalCell->length, 'The payroll table footer has no Net pay total cell');
 
-        $this->assertSame(Money::format($expectedNet), trim($totalCell->item(0)->textContent));
+        $total = $parse($totalCell->item(0)->textContent);
+        $this->assertSame($bodySum, $total);
+        $this->assertSame($expectedNet, $total);
     }
 
     public function test_summary_export_lists_staff_and_a_total(): void
