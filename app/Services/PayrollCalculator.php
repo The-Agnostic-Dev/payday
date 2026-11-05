@@ -13,6 +13,8 @@ class PayrollCalculator
 {
     public const PENSION_RATE = 0.08;
 
+    public function __construct(private readonly LeaveCalendar $calendar) {}
+
     /**
      * @return array<string, int> payslip attributes
      */
@@ -61,7 +63,7 @@ class PayrollCalculator
     {
         return $employee->leaveRequests
             ->where('type', LeaveRequest::UNPAID)
-            ->sum(fn (LeaveRequest $leave) => LeaveCalendar::workingDays(
+            ->sum(fn (LeaveRequest $leave) => $this->calendar->workingDays(
                 $leave->start_date->max($period->start),
                 $leave->end_date->min($period->end),
             ));
