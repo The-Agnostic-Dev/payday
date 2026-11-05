@@ -41,7 +41,7 @@ class PayPeriodTest extends TestCase
         $this->assertSame(22, $period->daysEmployed(CarbonImmutable::parse('2026-03-10'), null));
         $this->assertSame(20, $period->daysEmployed(CarbonImmutable::parse('2020-01-01'), CarbonImmutable::parse('2026-03-20')));
         $this->assertSame(
-            CarbonImmutable::parse('2026-03-05')->diffInDays(CarbonImmutable::parse('2026-03-12')) + 1,
+            (int) CarbonImmutable::parse('2026-03-05')->diffInDays(CarbonImmutable::parse('2026-03-12')) + 1,
             $period->daysEmployed(CarbonImmutable::parse('2026-03-05'), CarbonImmutable::parse('2026-03-12'))
         );
     }

@@ -25,10 +25,10 @@ class PayrollCalculator
 
         $share = $daysPaid / $daysInMonth;
 
+        $gross = (int) round($employee->monthlyGross() * $share);
         $basic = (int) round($employee->basic * $share);
         $housing = (int) round($employee->housing * $share);
-        $transport = (int) round($employee->transport * $share);
-        $gross = $basic + $housing + $transport;
+        $transport = $gross - $basic - $housing;
 
         $pension = (int) round($gross * self::PENSION_RATE);
         $tax = (int) round(TaxTable::monthlyTax($gross - $pension));
