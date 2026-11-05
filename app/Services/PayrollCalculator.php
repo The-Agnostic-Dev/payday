@@ -28,7 +28,15 @@ class PayrollCalculator
         $gross = (int) round($employee->monthlyGross() * $share);
         $basic = (int) round($employee->basic * $share);
         $housing = (int) round($employee->housing * $share);
-        $transport = $gross - $basic - $housing;
+        $transport = max(0, $gross - $basic - $housing);
+        $excess = $basic + $housing + $transport - $gross;
+        if ($excess > 0) {
+            $housing -= min($housing, $excess);
+            $excess = $basic + $housing + $transport - $gross;
+            if ($excess > 0) {
+                $basic -= $excess;
+            }
+        }
 
         $pension = (int) round($gross * self::PENSION_RATE);
         $tax = (int) round(TaxTable::monthlyTax($gross - $pension));

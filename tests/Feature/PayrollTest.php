@@ -54,6 +54,30 @@ class PayrollTest extends TestCase
         $this->assertSame($slip->net + $fullSlip->net, (int) $run->payslips()->sum('net'));
     }
 
+    public function test_prorated_components_never_go_negative_and_sum_to_gross(): void
+    {
+        $grade = $this->grade(['basic' => 1, 'housing' => 1, 'transport' => 0]);
+        $employee = $this->employee(['grade_id' => $grade->id, 'start_date' => '2026-02-15']);
+
+        $run = app(PayrollService::class)->createRun(PayPeriod::fromKey('2026-02'));
+        $slip = $run->payslips()->where('employee_id', $employee->id)->first();
+
+        $this->assertSame(14, $slip->days_paid);
+        $this->assertSame(1, $slip->gross);
+        $this->assertGreaterThanOrEqual(0, $slip->basic);
+        $this->assertGreaterThanOrEqual(0, $slip->housing);
+        $this->assertGreaterThanOrEqual(0, $slip->transport);
+        $this->assertSame($slip->gross, $slip->basic + $slip->housing + $slip->transport);
+        $this->assertSame($slip->gross - $slip->pension - $slip->tax - $slip->loan, $slip->net);
+        $this->assertSame(1, $slip->basic);
+        $this->assertSame(0, $slip->housing);
+        $this->assertSame(0, $slip->transport);
+        $this->assertSame(0, $slip->pension);
+        $this->assertSame(0, $slip->tax);
+        $this->assertSame(0, $slip->loan);
+        $this->assertSame(1, $slip->net);
+    }
+
     public function test_staff_who_left_before_the_month_are_not_paid(): void
     {
         $this->employee(['name' => 'Still here']);
