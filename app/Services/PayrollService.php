@@ -72,14 +72,10 @@ class PayrollService
         $run->delete();
     }
 
-    public function recomputeUnpaidLeave(?PayPeriod $period = null): void
+    public function recomputeUnpaidLeave(): void
     {
         $query = Payslip::where('unpaid_leave_days', '>', 0)
             ->with(['run', 'employee.leaveRequests']);
-
-        if ($period) {
-            $query->whereHas('run', fn ($q) => $q->where('period', $period->key));
-        }
 
         $query->get()->each(function (Payslip $payslip) {
             if (! $payslip->employee || $payslip->days_paid <= 0) {

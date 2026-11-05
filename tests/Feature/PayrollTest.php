@@ -183,7 +183,7 @@ class PayrollTest extends TestCase
         $newGrade = $this->grade(['basic' => 300_000_00, 'housing' => 100_000_00, 'transport' => 40_000_00]);
         $employee->forceFill(['grade_id' => $newGrade->id, 'loan_balance' => 0])->save();
 
-        app(PayrollService::class)->recomputeUnpaidLeave($period);
+        app(PayrollService::class)->recomputeUnpaidLeave();
 
         $slip->refresh();
 
@@ -236,7 +236,7 @@ class PayrollTest extends TestCase
 
         LeaveRequest::where('employee_id', $employee->id)->where('type', LeaveRequest::UNPAID)->delete();
 
-        app(PayrollService::class)->recomputeUnpaidLeave($period);
+        app(PayrollService::class)->recomputeUnpaidLeave();
 
         $slip->refresh();
 
@@ -287,7 +287,7 @@ class PayrollTest extends TestCase
             'net' => $oldNet,
         ])->save();
 
-        app(PayrollService::class)->recomputeUnpaidLeave($period);
+        app(PayrollService::class)->recomputeUnpaidLeave();
 
         $slip->refresh();
 
