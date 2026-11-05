@@ -56,11 +56,14 @@ class PayrollCalculator
         return min($employee->loan_repayment, $employee->loan_balance);
     }
 
-    /** Calendar days of unpaid leave that fall inside the month. */
+    /** Working days of unpaid leave that fall inside the month. */
     public function unpaidLeaveDays(Employee $employee, PayPeriod $period): int
     {
         return $employee->leaveRequests
             ->where('type', LeaveRequest::UNPAID)
-            ->sum(fn (LeaveRequest $leave) => $period->overlapDays($leave->start_date, $leave->end_date));
+            ->sum(fn (LeaveRequest $leave) => LeaveCalendar::workingDays(
+                $leave->start_date->max($period->start),
+                $leave->end_date->min($period->end),
+            ));
     }
 }

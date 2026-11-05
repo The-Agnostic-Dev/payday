@@ -6,7 +6,7 @@
     <h1>Leave</h1>
     <p class="muted">
         Everyone gets {{ \App\Services\LeaveCalendar::ANNUAL_ENTITLEMENT }} working days of annual leave a calendar year.
-        Annual and sick leave are paid. Unpaid leave is taken off pay for every calendar day it covers in the month, weekends included.
+        Annual and sick leave are paid. Unpaid leave is taken off pay for every working day it covers in the month.
     </p>
 
     <section class="card">
