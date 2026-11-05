@@ -80,7 +80,7 @@ final class PayPeriod
         $from = $joinedThisMonth ? $startDate : $this->start;
         $to = $leftThisMonth ? $endDate : $this->end;
 
-        return (int) $from->diffInDays($to);
+        return (int) $from->diffInDays($to) + 1;
     }
 
     /** Calendar days of [from, to] that fall inside this month. */
