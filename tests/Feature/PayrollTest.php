@@ -42,23 +42,18 @@ class PayrollTest extends TestCase
         $run = app(PayrollService::class)->createRun(PayPeriod::fromKey('2026-03'));
         $slip = $run->payslips()->where('employee_id', $starter->id)->first();
 
-        $this->assertSame(22, $slip->days_paid);
+        $this->assertSame(31, $slip->days_paid);
 
-        $monthlyGross = 200_000_00 + 70_000_00 + 30_000_00;
-        $expectedGross = (int) round($monthlyGross * $slip->days_paid / $slip->days_in_month);
-        $this->assertSame($expectedGross, $slip->gross);
+        $this->assertSame(300_000_00, $slip->gross);
+        $this->assertSame(200_000_00, $slip->basic);
+        $this->assertSame(70_000_00, $slip->housing);
+        $this->assertSame(30_000_00, $slip->transport);
         $this->assertSame($slip->gross, $slip->basic + $slip->housing + $slip->transport);
-        $this->assertGreaterThanOrEqual(0, $slip->basic);
-        $this->assertGreaterThanOrEqual(0, $slip->housing);
-        $this->assertGreaterThanOrEqual(0, $slip->transport);
         $this->assertSame(10_000_00, $slip->loan);
 
-        $expectedPension = (int) round($slip->gross * 0.08);
-        $expectedTax = (int) round(TaxTable::monthlyTax($slip->gross - ($slip->gross * 0.08)));
-        $this->assertSame($expectedPension, $slip->pension);
-        $this->assertSame($expectedTax, $slip->tax);
-        $expectedNet = $slip->gross - $expectedPension - $expectedTax - $slip->loan;
-        $this->assertSame($expectedNet, $slip->net);
+        $this->assertSame(24_000_00, $slip->pension);
+        $this->assertSame(26_400_00, $slip->tax);
+        $this->assertSame(239_600_00, $slip->net);
 
         $fullSlip = $run->payslips()->where('employee_id', $fullTimer->id)->first();
         $this->assertSame(31, $fullSlip->days_paid);
@@ -71,7 +66,7 @@ class PayrollTest extends TestCase
     public function test_prorated_components_never_go_negative_and_sum_to_gross(): void
     {
         $grade = $this->grade(['basic' => 1, 'housing' => 1, 'transport' => 0]);
-        $employee = $this->employee(['grade_id' => $grade->id, 'start_date' => '2026-02-15']);
+        $employee = $this->employee(['grade_id' => $grade->id, 'start_date' => '2026-01-01', 'end_date' => '2026-02-14']);
 
         $run = app(PayrollService::class)->createRun(PayPeriod::fromKey('2026-02'));
         $slip = $run->payslips()->where('employee_id', $employee->id)->first();

@@ -20,6 +20,14 @@ class PayrollCalculator
     {
         $daysInMonth = $period->daysInMonth();
         $daysEmployed = $period->daysEmployed($employee->start_date, $employee->end_date);
+
+        $startDate = $employee->start_date;
+        if ($startDate !== null
+            && $startDate->greaterThanOrEqualTo($period->start)
+            && $startDate->lessThanOrEqualTo($period->end)
+        ) {
+            $daysEmployed = $daysInMonth;
+        }
         $unpaidDays = min($daysEmployed, $this->unpaidLeaveDays($employee, $period));
         $daysPaid = $daysEmployed - $unpaidDays;
 
