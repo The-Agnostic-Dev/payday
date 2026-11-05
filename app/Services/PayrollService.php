@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Employee;
+use App\Models\LeaveRequest;
 use App\Models\Payslip;
 use App\Models\PayrollRun;
 use App\Models\User;
@@ -85,17 +86,19 @@ class PayrollService
                 return;
             }
 
-            $storedUnpaidLeave = $payslip->unpaid_leave_days;
-            $correctedUnpaidLeave = $this->calculator->unpaidLeaveDays(
-                $payslip->employee,
-                $payslip->run->payPeriod()
-            );
+            $period = $payslip->run->payPeriod();
+            $hasOverlappingUnpaidLeave = $payslip->employee->leaveRequests
+                ->where('type', LeaveRequest::UNPAID)
+                ->contains(fn ($leave) => $leave->start_date <= $period->end && $leave->end_date >= $period->start);
 
-            if ($correctedUnpaidLeave === 0) {
-                $correctedUnpaidLeave = $storedUnpaidLeave;
-            } else {
-                $correctedUnpaidLeave = min($correctedUnpaidLeave, $storedUnpaidLeave);
+            if (! $hasOverlappingUnpaidLeave) {
+                return;
             }
+
+            $storedUnpaidLeave = $payslip->unpaid_leave_days;
+            $correctedUnpaidLeave = $this->calculator->unpaidLeaveDays($payslip->employee, $period);
+
+            $correctedUnpaidLeave = min($correctedUnpaidLeave, $storedUnpaidLeave);
 
             $storedDaysPaid = $payslip->days_paid;
             $newDaysPaid = ($storedDaysPaid + $storedUnpaidLeave) - $correctedUnpaidLeave;

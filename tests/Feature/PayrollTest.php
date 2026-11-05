@@ -207,4 +207,108 @@ class PayrollTest extends TestCase
         $this->assertSame($expectedTax, $slip->tax);
         $this->assertSame($expectedNet, $slip->net);
     }
+
+    public function test_recompute_skips_payslip_when_unpaid_leave_request_deleted(): void
+    {
+        $grade = $this->grade(['basic' => 200_000_00, 'housing' => 70_000_00, 'transport' => 30_000_00]);
+        $employee = $this->employee(['grade_id' => $grade->id]);
+        $period = PayPeriod::fromKey('2026-03');
+
+        LeaveRequest::create([
+            'employee_id' => $employee->id,
+            'type' => LeaveRequest::UNPAID,
+            'start_date' => '2026-03-06',
+            'end_date' => '2026-03-09',
+            'days' => 2,
+            'note' => 'Friday to Monday',
+        ]);
+
+        $run = app(PayrollService::class)->createRun($period);
+        $slip = $run->payslips()->first();
+
+        $this->assertSame(29, $slip->days_paid);
+        $this->assertSame(2, $slip->unpaid_leave_days);
+
+        $before = $slip->only([
+            'days_paid', 'unpaid_leave_days', 'basic', 'housing', 'transport',
+            'gross', 'pension', 'tax', 'loan', 'net',
+        ]);
+
+        LeaveRequest::where('employee_id', $employee->id)->where('type', LeaveRequest::UNPAID)->delete();
+
+        app(PayrollService::class)->recomputeUnpaidLeave($period);
+
+        $slip->refresh();
+
+        $this->assertSame($before, $slip->only([
+            'days_paid', 'unpaid_leave_days', 'basic', 'housing', 'transport',
+            'gross', 'pension', 'tax', 'loan', 'net',
+        ]));
+    }
+
+    public function test_recompute_corrects_weekend_only_unpaid_leave_to_zero(): void
+    {
+        $grade = $this->grade(['basic' => 200_000_00, 'housing' => 70_000_00, 'transport' => 30_000_00]);
+        $employee = $this->employee(['grade_id' => $grade->id, 'loan_repayment' => 25_000_00, 'loan_balance' => 100_000_00]);
+        $period = PayPeriod::fromKey('2026-03');
+        $daysInMonth = $period->daysInMonth();
+
+        LeaveRequest::create([
+            'employee_id' => $employee->id,
+            'type' => LeaveRequest::UNPAID,
+            'start_date' => '2026-03-07',
+            'end_date' => '2026-03-08',
+            'days' => 0,
+            'note' => 'Weekend only',
+        ]);
+
+        $run = app(PayrollService::class)->createRun($period);
+        $slip = $run->payslips()->first();
+        $storedLoan = $slip->loan;
+
+        $oldDaysPaid = $daysInMonth - 2;
+        $oldBasic = (int) round($grade->basic * $oldDaysPaid / $daysInMonth);
+        $oldHousing = (int) round($grade->housing * $oldDaysPaid / $daysInMonth);
+        $oldTransport = (int) round($grade->transport * $oldDaysPaid / $daysInMonth);
+        $oldGross = $oldBasic + $oldHousing + $oldTransport;
+        $oldPension = (int) round($oldGross * PayrollCalculator::PENSION_RATE);
+        $oldTax = (int) round(TaxTable::monthlyTax($oldGross - $oldPension));
+        $oldNet = $oldGross - $oldPension - $oldTax - $storedLoan;
+
+        $slip->forceFill([
+            'days_paid' => $oldDaysPaid,
+            'unpaid_leave_days' => 2,
+            'basic' => $oldBasic,
+            'housing' => $oldHousing,
+            'transport' => $oldTransport,
+            'gross' => $oldGross,
+            'pension' => $oldPension,
+            'tax' => $oldTax,
+            'net' => $oldNet,
+        ])->save();
+
+        app(PayrollService::class)->recomputeUnpaidLeave($period);
+
+        $slip->refresh();
+
+        $this->assertSame($daysInMonth, $slip->days_paid);
+        $this->assertSame(0, $slip->unpaid_leave_days);
+        $this->assertSame($storedLoan, $slip->loan);
+
+        $expectedBasic = $grade->basic;
+        $expectedHousing = $grade->housing;
+        $expectedTransport = $grade->transport;
+        $expectedGross = $expectedBasic + $expectedHousing + $expectedTransport;
+        $expectedPension = (int) round($expectedGross * PayrollCalculator::PENSION_RATE);
+        $expectedTax = (int) round(TaxTable::monthlyTax($expectedGross - $expectedPension));
+        $expectedNet = $expectedGross - $expectedPension - $expectedTax - $storedLoan;
+
+        $this->assertSame($expectedBasic, $slip->basic);
+        $this->assertSame($expectedHousing, $slip->housing);
+        $this->assertSame($expectedTransport, $slip->transport);
+        $this->assertSame($expectedGross, $slip->gross);
+        $this->assertSame($expectedPension, $slip->pension);
+        $this->assertSame($expectedTax, $slip->tax);
+        $this->assertSame($expectedNet, $slip->net);
+    }
 }
