@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\LeaveRequest;
 use App\Models\PayrollRun;
 use App\Models\User;
 use App\Services\PayPeriod;
@@ -90,5 +91,57 @@ class PayrollTest extends TestCase
         $this->assertStringContainsString('Ada Obi', $lines[1]);
         $this->assertStringContainsString('Bola Ade', $lines[2]);
         $this->assertStringContainsString('TOTAL', $lines[3]);
+    }
+
+    public function test_unpaid_leave_deducts_working_days_not_calendar_days(): void
+    {
+        $grade = $this->grade(['basic' => 200_000_00, 'housing' => 70_000_00, 'transport' => 30_000_00]);
+        $employee = $this->employee(['grade_id' => $grade->id]);
+
+        LeaveRequest::create([
+            'employee_id' => $employee->id,
+            'type' => LeaveRequest::UNPAID,
+            'start_date' => '2026-03-06',
+            'end_date' => '2026-03-09',
+            'days' => 2,
+            'note' => 'Friday to Monday',
+        ]);
+
+        $run = app(PayrollService::class)->createRun(PayPeriod::fromKey('2026-03'));
+        $slip = $run->payslips()->first();
+
+        $this->assertSame(29, $slip->days_paid);
+        $this->assertSame(2, $slip->unpaid_leave_days);
+    }
+
+    public function test_recompute_fixes_stored_payslips_created_under_old_calendar_day_rule(): void
+    {
+        $grade = $this->grade(['basic' => 200_000_00, 'housing' => 70_000_00, 'transport' => 30_000_00]);
+        $employee = $this->employee(['grade_id' => $grade->id]);
+        $period = PayPeriod::fromKey('2026-03');
+
+        LeaveRequest::create([
+            'employee_id' => $employee->id,
+            'type' => LeaveRequest::UNPAID,
+            'start_date' => '2026-03-06',
+            'end_date' => '2026-03-09',
+            'days' => 2,
+            'note' => 'Friday to Monday',
+        ]);
+
+        $run = app(PayrollService::class)->createRun($period);
+        $slip = $run->payslips()->first();
+
+        $slip->forceFill([
+            'days_paid' => $period->daysInMonth() - 4,
+            'unpaid_leave_days' => 4,
+        ])->save();
+
+        app(PayrollService::class)->recomputeUnpaidLeave($period);
+
+        $slip->refresh();
+
+        $this->assertSame($period->daysInMonth() - 2, $slip->days_paid);
+        $this->assertSame(2, $slip->unpaid_leave_days);
     }
 }
