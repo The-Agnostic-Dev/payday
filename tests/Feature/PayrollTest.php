@@ -117,7 +117,11 @@ class PayrollTest extends TestCase
     public function test_recompute_fixes_stored_payslips_created_under_old_calendar_day_rule(): void
     {
         $grade = $this->grade(['basic' => 200_000_00, 'housing' => 70_000_00, 'transport' => 30_000_00]);
-        $employee = $this->employee(['grade_id' => $grade->id]);
+        $employee = $this->employee([
+            'grade_id' => $grade->id,
+            'loan_repayment' => 25_000_00,
+            'loan_balance' => 100_000_00,
+        ]);
         $period = PayPeriod::fromKey('2026-03');
 
         LeaveRequest::create([
@@ -131,11 +135,16 @@ class PayrollTest extends TestCase
 
         $run = app(PayrollService::class)->createRun($period);
         $slip = $run->payslips()->first();
+        $storedLoan = $slip->loan;
 
         $slip->forceFill([
             'days_paid' => $period->daysInMonth() - 4,
             'unpaid_leave_days' => 4,
         ])->save();
+
+        // Simulate a loan balance that has since been fully repaid, so a live
+        // recalculation would return a different loan instalment than the stored one.
+        $employee->forceFill(['loan_balance' => 0])->save();
 
         app(PayrollService::class)->recomputeUnpaidLeave($period);
 
@@ -143,5 +152,24 @@ class PayrollTest extends TestCase
 
         $this->assertSame($period->daysInMonth() - 2, $slip->days_paid);
         $this->assertSame(2, $slip->unpaid_leave_days);
+        $this->assertSame($storedLoan, $slip->loan);
+
+        $storedDaysPaid = $period->daysInMonth() - 4;
+        $newDaysPaid = $period->daysInMonth() - 2;
+        $ratio = $newDaysPaid / $storedDaysPaid;
+
+        $this->assertSame((int) round($grade->basic * $ratio), $slip->basic);
+        $this->assertSame((int) round($grade->housing * $ratio), $slip->housing);
+        $this->assertSame((int) round($grade->transport * $ratio), $slip->transport);
+
+        $expectedGross = $slip->basic + $slip->housing + $slip->transport;
+        $expectedPension = (int) round($expectedGross * PayrollCalculator::PENSION_RATE);
+        $expectedTax = (int) round(TaxTable::monthlyTax($expectedGross - $expectedPension));
+        $expectedNet = $expectedGross - $expectedPension - $expectedTax - $slip->loan;
+
+        $this->assertSame($expectedGross, $slip->gross);
+        $this->assertSame($expectedPension, $slip->pension);
+        $this->assertSame($expectedTax, $slip->tax);
+        $this->assertSame($expectedNet, $slip->net);
     }
 }
