@@ -31,6 +31,25 @@ class PayrollTest extends TestCase
         $this->assertSame(224_600_00, $slip->net);
     }
 
+    public function test_mid_month_starter_is_prorated_inclusively(): void
+    {
+        $grade = $this->grade(['basic' => 200_000_00, 'housing' => 70_000_00, 'transport' => 30_000_00]);
+        $employee = $this->employee(['grade_id' => $grade->id, 'start_date' => '2026-03-10', 'loan_repayment' => 25_000_00, 'loan_balance' => 100_000_00]);
+
+        $run = app(PayrollService::class)->createRun(PayPeriod::fromKey('2026-03'));
+        $slip = $run->payslips()->first();
+
+        $this->assertSame($employee->id, $slip->employee_id);
+        $this->assertSame(22, $slip->days_paid);
+        $this->assertSame(21_290_323, $slip->gross);
+        $this->assertSame(1_703_226, $slip->pension);
+        $this->assertSame(1_438_065, $slip->tax);
+        $this->assertSame(2_500_000, $slip->loan);
+        $this->assertSame(15_649_032, $slip->net);
+
+        $this->assertSame(21_290_323, $run->payslips()->sum('gross'));
+    }
+
     public function test_staff_who_left_before_the_month_are_not_paid(): void
     {
         $this->employee(['name' => 'Still here']);
