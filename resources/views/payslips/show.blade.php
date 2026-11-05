@@ -25,7 +25,7 @@
             <dt>Bank</dt><dd>{{ $employee->bank_name }} {{ $employee->account_number }}</dd>
             <dt>Days paid</dt><dd class="days">{{ $payslip->days_paid }} of {{ $payslip->days_in_month }}</dd>
             @if ($payslip->unpaid_leave_days)
-                <dt>Unpaid leave</dt><dd>{{ $payslip->unpaid_leave_days }} working days</dd>
+                <dt>Unpaid leave</dt><dd>{{ $payslip->unpaid_leave_days }} calendar days</dd>
             @endif
         </dl>
 
