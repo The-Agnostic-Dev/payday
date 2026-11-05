@@ -72,4 +72,19 @@ class StaffTest extends TestCase
 
         $this->assertSame(2, LeaveRequest::firstOrFail()->days);
     }
+
+    public function test_dashboard_active_staff_count_excludes_employees_who_have_left(): void
+    {
+        $this->employee();
+        $this->employee();
+        $left = $this->employee();
+        $left->update(['end_date' => now()->subMonth()->toDateString()]);
+        $future = $this->employee();
+        $future->update(['end_date' => now()->addMonth()->toDateString()]);
+
+        $this->actingAs($this->user())
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertSee('Active staff 3');
+    }
 }
