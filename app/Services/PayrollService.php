@@ -99,7 +99,7 @@ class PayrollService
 
             $storedDaysPaid = $payslip->days_paid;
             $newDaysPaid = ($storedDaysPaid + $storedUnpaidLeave) - $correctedUnpaidLeave;
-            $ratio = $newDaysPaid / $storedDaysPaid;
+            $ratio = $newDaysPaid / $payslip->days_in_month;
 
             $basic = (int) round($payslip->basic * $ratio);
             $housing = (int) round($payslip->housing * $ratio);

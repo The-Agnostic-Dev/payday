@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\LeaveRequest;
 use App\Models\PayrollRun;
+use App\Models\Employee;
 use App\Models\User;
 use App\Services\PayPeriod;
 use App\Services\PayrollService;
@@ -114,6 +115,19 @@ class PayrollTest extends TestCase
         $this->assertSame(2, $slip->unpaid_leave_days);
     }
 
+    public function test_seeded_funmi_unpaid_leave_is_two_working_days(): void
+    {
+        $period = PayPeriod::current();
+        $run = PayrollRun::where('period', $period->key)->first();
+        $funmi = Employee::where('staff_no', 'PD-010')->first();
+
+        $slip = $run->payslips()->where('employee_id', $funmi->id)->first();
+
+        $this->assertNotNull($slip);
+        $this->assertSame(2, $slip->unpaid_leave_days);
+        $this->assertSame($period->daysInMonth() - 2, $slip->days_paid);
+    }
+
     public function test_recompute_fixes_stored_payslips_created_under_old_calendar_day_rule(): void
     {
         $grade = $this->grade(['basic' => 200_000_00, 'housing' => 70_000_00, 'transport' => 30_000_00]);
@@ -156,7 +170,7 @@ class PayrollTest extends TestCase
 
         $storedDaysPaid = $period->daysInMonth() - 4;
         $newDaysPaid = $period->daysInMonth() - 2;
-        $ratio = $newDaysPaid / $storedDaysPaid;
+        $ratio = $newDaysPaid / $period->daysInMonth();
 
         $this->assertSame((int) round($grade->basic * $ratio), $slip->basic);
         $this->assertSame((int) round($grade->housing * $ratio), $slip->housing);
