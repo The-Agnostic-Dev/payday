@@ -72,4 +72,78 @@ class StaffTest extends TestCase
 
         $this->assertSame(2, LeaveRequest::firstOrFail()->days);
     }
+
+    public function test_dashboard_active_staff_excludes_employees_who_have_left(): void
+    {
+        $grade = $this->grade(['basic' => 70_000_00, 'housing' => 20_000_00, 'transport' => 10_000_00]);
+
+        Employee::create([
+            'staff_no' => 'PD-101',
+            'name' => 'Active One',
+            'email' => 'active1@example.com',
+            'phone' => '08011111111',
+            'department' => 'Admin',
+            'job_title' => 'Officer',
+            'grade_id' => $grade->id,
+            'start_date' => now()->subYear()->toDateString(),
+            'end_date' => null,
+            'bank_name' => 'GTBank',
+            'account_number' => '0123456781',
+            'loan_repayment' => 0,
+            'loan_balance' => 0,
+        ]);
+
+        Employee::create([
+            'staff_no' => 'PD-102',
+            'name' => 'Active Two',
+            'email' => 'active2@example.com',
+            'phone' => '08022222222',
+            'department' => 'Admin',
+            'job_title' => 'Officer',
+            'grade_id' => $grade->id,
+            'start_date' => now()->subYear()->toDateString(),
+            'end_date' => null,
+            'bank_name' => 'GTBank',
+            'account_number' => '0123456782',
+            'loan_repayment' => 0,
+            'loan_balance' => 0,
+        ]);
+
+        Employee::create([
+            'staff_no' => 'PD-103',
+            'name' => 'Future End',
+            'email' => 'future@example.com',
+            'phone' => '08033333333',
+            'department' => 'Admin',
+            'job_title' => 'Officer',
+            'grade_id' => $grade->id,
+            'start_date' => now()->subYear()->toDateString(),
+            'end_date' => now()->addMonth()->toDateString(),
+            'bank_name' => 'GTBank',
+            'account_number' => '0123456783',
+            'loan_repayment' => 0,
+            'loan_balance' => 0,
+        ]);
+
+        Employee::create([
+            'staff_no' => 'PD-104',
+            'name' => 'Left Employee',
+            'email' => 'left@example.com',
+            'phone' => '08044444444',
+            'department' => 'Admin',
+            'job_title' => 'Officer',
+            'grade_id' => $grade->id,
+            'start_date' => now()->subYears(2)->toDateString(),
+            'end_date' => now()->subMonth()->toDateString(),
+            'bank_name' => 'GTBank',
+            'account_number' => '0123456784',
+            'loan_repayment' => 0,
+            'loan_balance' => 0,
+        ]);
+
+        $this->actingAs($this->user())->get('/dashboard')
+            ->assertOk()
+            ->assertSee('Active staff')
+            ->assertSee('<strong class="value">3</strong>', false);
+    }
 }
