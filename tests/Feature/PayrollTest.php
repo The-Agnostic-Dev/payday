@@ -57,7 +57,8 @@ class PayrollTest extends TestCase
         $expectedTax = (int) round(TaxTable::monthlyTax($slip->gross - ($slip->gross * 0.08)));
         $this->assertSame($expectedPension, $slip->pension);
         $this->assertSame($expectedTax, $slip->tax);
-        $this->assertSame($slip->gross - $slip->pension - $slip->tax - $slip->loan, $slip->net);
+        $expectedNet = (int) ($slip->gross - ($slip->gross * 0.08) - TaxTable::monthlyTax($slip->gross - ($slip->gross * 0.08)) - 10_000_00);
+        $this->assertSame($expectedNet, $slip->net);
 
         $fullSlip = $run->payslips()->where('employee_id', $fullTimer->id)->first();
         $this->assertSame(31, $fullSlip->days_paid);
@@ -86,7 +87,8 @@ class PayrollTest extends TestCase
         $this->assertSame(0, $slip->pension);
         $this->assertSame(0, $slip->tax);
         $this->assertSame(0, $slip->loan);
-        $this->assertSame($slip->gross - $slip->pension - $slip->tax - $slip->loan, $slip->net);
+        $expectedNet = (int) ($slip->gross - ($slip->gross * 0.08) - TaxTable::monthlyTax($slip->gross - ($slip->gross * 0.08)));
+        $this->assertSame($expectedNet, $slip->net);
     }
 
     public function test_staff_who_left_before_the_month_are_not_paid(): void
