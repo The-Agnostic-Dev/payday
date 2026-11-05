@@ -57,7 +57,7 @@ class PayrollTest extends TestCase
         $expectedTax = (int) round(TaxTable::monthlyTax($slip->gross - ($slip->gross * 0.08)));
         $this->assertSame($expectedPension, $slip->pension);
         $this->assertSame($expectedTax, $slip->tax);
-        $expectedNet = (int) ($slip->gross - ($slip->gross * 0.08) - TaxTable::monthlyTax($slip->gross - ($slip->gross * 0.08)) - 10_000_00);
+        $expectedNet = $slip->gross - $expectedPension - $expectedTax - $slip->loan;
         $this->assertSame($expectedNet, $slip->net);
 
         $fullSlip = $run->payslips()->where('employee_id', $fullTimer->id)->first();
@@ -87,7 +87,9 @@ class PayrollTest extends TestCase
         $this->assertSame(0, $slip->pension);
         $this->assertSame(0, $slip->tax);
         $this->assertSame(0, $slip->loan);
-        $expectedNet = (int) ($slip->gross - ($slip->gross * 0.08) - TaxTable::monthlyTax($slip->gross - ($slip->gross * 0.08)));
+        $expectedPension = (int) round($slip->gross * 0.08);
+        $expectedTax = (int) round(TaxTable::monthlyTax($slip->gross - ($slip->gross * 0.08)));
+        $expectedNet = $slip->gross - $expectedPension - $expectedTax;
         $this->assertSame($expectedNet, $slip->net);
     }
 
