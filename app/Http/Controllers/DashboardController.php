@@ -13,7 +13,7 @@ class DashboardController extends Controller
     {
         $today = CarbonImmutable::today();
 
-        $activeStaff = Employee::query()->get();
+        $activeStaff = Employee::active()->get();
 
         $latestRun = PayrollRun::withSum('payslips as net_total', 'net')
             ->withCount('payslips')
