@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Employee;
 use App\Models\LeaveRequest;
+use App\Models\User;
+use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -75,14 +77,14 @@ class StaffTest extends TestCase
 
     public function test_dashboard_active_staff_count_excludes_employees_who_have_left(): void
     {
-        $this->employee();
-        $this->employee();
-        $left = $this->employee();
-        $left->update(['end_date' => now()->subMonth()->toDateString()]);
+        $this->seed(DatabaseSeeder::class);
 
-        $this->actingAs($this->user())
+        $user = User::where('email', 'bisi@adunnifoods.ng')->firstOrFail();
+
+        $this->actingAs($user)
             ->get('/dashboard')
             ->assertOk()
-            ->assertSee('Active staff 2');
+            ->assertSee('Active staff 14')
+            ->assertDontSee('Active staff 15');
     }
 }
