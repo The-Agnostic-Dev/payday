@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Employee;
+use App\Models\Payslip;
 use App\Models\PayrollRun;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -68,5 +69,35 @@ class PayrollService
     public function discard(PayrollRun $run): void
     {
         $run->delete();
+    }
+
+    public function recomputeUnpaidLeave(?PayPeriod $period = null): void
+    {
+        $query = Payslip::where('unpaid_leave_days', '>', 0)
+            ->with(['run', 'employee.leaveRequests']);
+
+        if ($period) {
+            $query->whereHas('run', fn ($q) => $q->where('period', $period->key));
+        }
+
+        $query->get()->each(function (Payslip $payslip) {
+            if (! $payslip->employee) {
+                return;
+            }
+
+            $result = $this->calculator->calculate($payslip->employee, $payslip->run->payPeriod());
+
+            $payslip->update([
+                'days_paid' => $result['days_paid'],
+                'unpaid_leave_days' => $result['unpaid_leave_days'],
+                'basic' => $result['basic'],
+                'housing' => $result['housing'],
+                'transport' => $result['transport'],
+                'gross' => $result['gross'],
+                'pension' => $result['pension'],
+                'tax' => $result['tax'],
+                'net' => $result['net'],
+            ]);
+        });
     }
 }
