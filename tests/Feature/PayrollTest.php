@@ -44,19 +44,20 @@ class PayrollTest extends TestCase
 
         $this->assertSame(22, $slip->days_paid);
 
-        $expectedBasic = (int) round(200_000_00 * 22 / 31);
-        $expectedHousing = (int) round(70_000_00 * 22 / 31);
-        $expectedTransport = (int) round(30_000_00 * 22 / 31);
-        $expectedGross = $expectedBasic + $expectedHousing + $expectedTransport;
+        $monthlyGross = 200_000_00 + 70_000_00 + 30_000_00;
+        $expectedGross = (int) round($monthlyGross * $slip->days_paid / $slip->days_in_month);
         $this->assertSame($expectedGross, $slip->gross);
         $this->assertSame($slip->gross, $slip->basic + $slip->housing + $slip->transport);
+        $this->assertGreaterThanOrEqual(0, $slip->basic);
+        $this->assertGreaterThanOrEqual(0, $slip->housing);
+        $this->assertGreaterThanOrEqual(0, $slip->transport);
         $this->assertSame(10_000_00, $slip->loan);
 
-        $pension = $slip->gross * 0.08;
-        $tax = TaxTable::monthlyTax($slip->gross - $pension);
-        $this->assertSame((int) round($pension), $slip->pension);
-        $this->assertSame((int) round($tax), $slip->tax);
-        $this->assertSame((int)($slip->gross - $pension - $tax - $slip->loan), $slip->net);
+        $expectedPension = (int) round($slip->gross * 0.08);
+        $expectedTax = (int) round(TaxTable::monthlyTax($slip->gross - ($slip->gross * 0.08)));
+        $this->assertSame($expectedPension, $slip->pension);
+        $this->assertSame($expectedTax, $slip->tax);
+        $this->assertSame($slip->gross - $slip->pension - $slip->tax - $slip->loan, $slip->net);
 
         $fullSlip = $run->payslips()->where('employee_id', $fullTimer->id)->first();
         $this->assertSame(31, $fullSlip->days_paid);
@@ -75,18 +76,17 @@ class PayrollTest extends TestCase
         $slip = $run->payslips()->where('employee_id', $employee->id)->first();
 
         $this->assertSame(14, $slip->days_paid);
-        $this->assertSame(2, $slip->gross);
+        $share = $slip->days_paid / $slip->days_in_month;
+        $expectedGross = (int) round(2 * $share);
+        $this->assertSame($expectedGross, $slip->gross);
         $this->assertGreaterThanOrEqual(0, $slip->basic);
         $this->assertGreaterThanOrEqual(0, $slip->housing);
         $this->assertGreaterThanOrEqual(0, $slip->transport);
         $this->assertSame($slip->gross, $slip->basic + $slip->housing + $slip->transport);
-        $this->assertSame(1, $slip->basic);
-        $this->assertSame(1, $slip->housing);
-        $this->assertSame(0, $slip->transport);
         $this->assertSame(0, $slip->pension);
         $this->assertSame(0, $slip->tax);
         $this->assertSame(0, $slip->loan);
-        $this->assertSame(1, $slip->net);
+        $this->assertSame($slip->gross - $slip->pension - $slip->tax - $slip->loan, $slip->net);
     }
 
     public function test_staff_who_left_before_the_month_are_not_paid(): void

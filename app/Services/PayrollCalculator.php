@@ -25,14 +25,28 @@ class PayrollCalculator
 
         $share = $daysPaid / $daysInMonth;
 
+        $gross = (int) round($employee->monthlyGross() * $share);
         $basic = (int) round($employee->basic * $share);
         $housing = (int) round($employee->housing * $share);
-        $transport = (int) round($employee->transport * $share);
-        $gross = $basic + $housing + $transport;
+        $transport = $gross - $basic - $housing;
+
+        if ($transport < 0) {
+            $excess = -$transport;
+            if ($housing >= $excess) {
+                $housing -= $excess;
+            } else {
+                $basic -= ($excess - $housing);
+                $housing = 0;
+            }
+            $transport = 0;
+        }
 
         $pension = $gross * self::PENSION_RATE;
         $tax = TaxTable::monthlyTax($gross - $pension);
         $loan = $this->loanDeduction($employee);
+
+        $roundedPension = (int) round($pension);
+        $roundedTax = (int) round($tax);
 
         return [
             'employee_id' => $employee->id,
@@ -43,10 +57,10 @@ class PayrollCalculator
             'housing' => $housing,
             'transport' => $transport,
             'gross' => $gross,
-            'pension' => (int) round($pension),
-            'tax' => (int) round($tax),
+            'pension' => $roundedPension,
+            'tax' => $roundedTax,
             'loan' => $loan,
-            'net' => (int) ($gross - $pension - $tax - $loan),
+            'net' => $gross - $roundedPension - $roundedTax - $loan,
         ];
     }
 
