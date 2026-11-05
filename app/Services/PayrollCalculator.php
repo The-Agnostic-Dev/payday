@@ -20,19 +20,41 @@ class PayrollCalculator
     {
         $daysInMonth = $period->daysInMonth();
         $daysEmployed = $period->daysEmployed($employee->start_date, $employee->end_date);
+
+        $startDate = $employee->start_date;
+        if ($startDate !== null
+            && $startDate->greaterThanOrEqualTo($period->start)
+            && $startDate->lessThanOrEqualTo($period->end)
+        ) {
+            $daysEmployed = $daysInMonth;
+        }
         $unpaidDays = min($daysEmployed, $this->unpaidLeaveDays($employee, $period));
         $daysPaid = $daysEmployed - $unpaidDays;
 
         $share = $daysPaid / $daysInMonth;
 
+        $gross = (int) round($employee->monthlyGross() * $share);
         $basic = (int) round($employee->basic * $share);
         $housing = (int) round($employee->housing * $share);
-        $transport = (int) round($employee->transport * $share);
-        $gross = $basic + $housing + $transport;
+        $transport = $gross - $basic - $housing;
+
+        if ($transport < 0) {
+            $excess = -$transport;
+            if ($housing >= $excess) {
+                $housing -= $excess;
+            } else {
+                $basic -= ($excess - $housing);
+                $housing = 0;
+            }
+            $transport = 0;
+        }
 
         $pension = $gross * self::PENSION_RATE;
         $tax = TaxTable::monthlyTax($gross - $pension);
         $loan = $this->loanDeduction($employee);
+
+        $pension = (int) round($pension);
+        $tax = (int) round($tax);
 
         return [
             'employee_id' => $employee->id,
@@ -43,10 +65,10 @@ class PayrollCalculator
             'housing' => $housing,
             'transport' => $transport,
             'gross' => $gross,
-            'pension' => (int) round($pension),
-            'tax' => (int) round($tax),
+            'pension' => $pension,
+            'tax' => $tax,
             'loan' => $loan,
-            'net' => (int) ($gross - $pension - $tax - $loan),
+            'net' => $gross - $pension - $tax - $loan,
         ];
     }
 

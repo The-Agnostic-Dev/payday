@@ -34,6 +34,18 @@ class PayPeriodTest extends TestCase
         $this->assertSame(0, $period->daysEmployed(CarbonImmutable::parse('2020-01-01'), CarbonImmutable::parse('2026-02-28')));
     }
 
+    public function test_part_month_staff_are_paid_inclusively(): void
+    {
+        $period = PayPeriod::fromKey('2026-03');
+
+        $this->assertSame(22, $period->daysEmployed(CarbonImmutable::parse('2026-03-10'), null));
+        $this->assertSame(20, $period->daysEmployed(CarbonImmutable::parse('2020-01-01'), CarbonImmutable::parse('2026-03-20')));
+        $this->assertSame(
+            (int) CarbonImmutable::parse('2026-03-05')->diffInDays(CarbonImmutable::parse('2026-03-12')) + 1,
+            $period->daysEmployed(CarbonImmutable::parse('2026-03-05'), CarbonImmutable::parse('2026-03-12'))
+        );
+    }
+
     public function test_overlap_counts_calendar_days_inside_the_month(): void
     {
         $period = PayPeriod::fromKey('2026-03');

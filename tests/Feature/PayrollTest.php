@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\PayrollRun;
 use App\Models\User;
 use App\Services\PayPeriod;
+use App\Services\TaxTable;
 use App\Support\Money;
 use App\Services\PayrollService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -30,6 +31,61 @@ class PayrollTest extends TestCase
         $this->assertSame(26_400_00, $slip->tax);
         $this->assertSame(25_000_00, $slip->loan);
         $this->assertSame(224_600_00, $slip->net);
+    }
+
+    public function test_a_mid_month_starter_is_paid_for_every_day_including_the_first(): void
+    {
+        $grade = $this->grade(['basic' => 200_000_00, 'housing' => 70_000_00, 'transport' => 30_000_00]);
+        $fullTimer = $this->employee(['grade_id' => $grade->id]);
+        $starter = $this->employee(['grade_id' => $grade->id, 'start_date' => '2026-03-10', 'loan_repayment' => 10_000_00, 'loan_balance' => 40_000_00]);
+
+        $run = app(PayrollService::class)->createRun(PayPeriod::fromKey('2026-03'));
+        $slip = $run->payslips()->where('employee_id', $starter->id)->first();
+
+        $this->assertSame(31, $slip->days_paid);
+
+        $this->assertSame(300_000_00, $slip->gross);
+        $this->assertSame(200_000_00, $slip->basic);
+        $this->assertSame(70_000_00, $slip->housing);
+        $this->assertSame(30_000_00, $slip->transport);
+        $this->assertSame($slip->gross, $slip->basic + $slip->housing + $slip->transport);
+        $this->assertSame(10_000_00, $slip->loan);
+
+        $this->assertSame(24_000_00, $slip->pension);
+        $this->assertSame(26_400_00, $slip->tax);
+        $this->assertSame(239_600_00, $slip->net);
+
+        $fullSlip = $run->payslips()->where('employee_id', $fullTimer->id)->first();
+        $this->assertSame(31, $fullSlip->days_paid);
+        $this->assertSame(300_000_00, $fullSlip->gross);
+
+        $this->assertSame($slip->gross + $fullSlip->gross, (int) $run->payslips()->sum('gross'));
+        $this->assertSame($slip->net + $fullSlip->net, (int) $run->payslips()->sum('net'));
+    }
+
+    public function test_prorated_components_never_go_negative_and_sum_to_gross(): void
+    {
+        $grade = $this->grade(['basic' => 1, 'housing' => 1, 'transport' => 0]);
+        $employee = $this->employee(['grade_id' => $grade->id, 'start_date' => '2026-01-01', 'end_date' => '2026-02-14']);
+
+        $run = app(PayrollService::class)->createRun(PayPeriod::fromKey('2026-02'));
+        $slip = $run->payslips()->where('employee_id', $employee->id)->first();
+
+        $this->assertSame(14, $slip->days_paid);
+        $share = $slip->days_paid / $slip->days_in_month;
+        $expectedGross = (int) round(2 * $share);
+        $this->assertSame($expectedGross, $slip->gross);
+        $this->assertGreaterThanOrEqual(0, $slip->basic);
+        $this->assertGreaterThanOrEqual(0, $slip->housing);
+        $this->assertGreaterThanOrEqual(0, $slip->transport);
+        $this->assertSame($slip->gross, $slip->basic + $slip->housing + $slip->transport);
+        $this->assertSame(0, $slip->pension);
+        $this->assertSame(0, $slip->tax);
+        $this->assertSame(0, $slip->loan);
+        $expectedPension = (int) round($slip->gross * 0.08);
+        $expectedTax = (int) round(TaxTable::monthlyTax($slip->gross - ($slip->gross * 0.08)));
+        $expectedNet = $slip->gross - $expectedPension - $expectedTax;
+        $this->assertSame($expectedNet, $slip->net);
     }
 
     public function test_staff_who_left_before_the_month_are_not_paid(): void
