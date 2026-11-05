@@ -77,6 +77,42 @@ class PayrollTest extends TestCase
         $this->assertSame(PayrollRun::APPROVED, $run->fresh()->status);
     }
 
+    public function test_the_net_pay_total_on_the_run_page_is_the_sum_of_the_net_pay_column(): void
+    {
+        $grade = $this->grade(['basic' => 200_000_00, 'housing' => 70_000_00, 'transport' => 30_000_00]);
+        $this->employee(['grade_id' => $grade->id]);
+        $this->employee(['grade_id' => $grade->id, 'start_date' => '2026-03-10']);
+        $this->employee(['grade_id' => $grade->id, 'loan_repayment' => 25_000_00, 'loan_balance' => 100_000_00]);
+
+        $run = app(PayrollService::class)->createRun(PayPeriod::fromKey('2026-03'));
+
+        $html = $this->actingAs($this->user())->get("/payroll/{$run->id}")->assertOk()->getContent();
+
+        $dom = new \DOMDocument;
+        @$dom->loadHTML($html);
+        $xpath = new \DOMXPath($dom);
+
+        $headers = $xpath->query('//table/thead//th');
+        $netColumn = null;
+        foreach ($headers as $index => $th) {
+            if (trim($th->textContent) === 'Net pay') {
+                $netColumn = $index + 1;
+            }
+        }
+        $this->assertNotNull($netColumn, 'The payroll table has no Net pay column');
+
+        $netTotalCell = $xpath->query("//table/tfoot//td[position()={$netColumn}]");
+        $this->assertSame(1, $netTotalCell->length, 'The payroll table footer has no Net pay total cell');
+
+        $shownTotal = (int) preg_replace('/[^0-9]/', '', $netTotalCell->item(0)->textContent);
+
+        $expectedNet = $run->payslips()->sum('net');
+        $expectedGross = $run->payslips()->sum('gross');
+        $this->assertNotSame($expectedGross, $expectedNet);
+
+        $this->assertSame((int) round($expectedNet / 100), $shownTotal);
+    }
+
     public function test_summary_export_lists_staff_and_a_total(): void
     {
         $this->employee(['name' => 'Ada Obi']);
