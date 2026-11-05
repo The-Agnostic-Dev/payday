@@ -65,7 +65,7 @@
                 <th class="num">@naira($payslips->sum('pension'))</th>
                 <th class="num">@naira($payslips->sum('tax'))</th>
                 <th class="num">@naira($payslips->sum('loan'))</th>
-                <th class="num net-total">@naira($payslips->sum('gross'))</th>
+                <th class="num net-total">@naira($payslips->sum('net'))</th>
                 <th></th>
             </tr>
         </tfoot>

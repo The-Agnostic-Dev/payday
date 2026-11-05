@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\PayrollRun;
 use App\Models\User;
 use App\Services\PayPeriod;
+use App\Support\Money;
 use App\Services\PayrollService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -75,6 +76,40 @@ class PayrollTest extends TestCase
         $this->actingAs($this->user(User::OWNER))->post("/payroll/{$run->id}/approve")->assertRedirect();
 
         $this->assertSame(PayrollRun::APPROVED, $run->fresh()->status);
+    }
+
+    public function test_the_net_pay_total_on_the_run_page_is_the_sum_of_the_net_pay_column(): void
+    {
+        $grade = $this->grade(['basic' => 200_000_00, 'housing' => 70_000_00, 'transport' => 30_000_00]);
+        $this->employee(['grade_id' => $grade->id]);
+        $this->employee(['grade_id' => $grade->id, 'loan_repayment' => 25_000_00, 'loan_balance' => 100_000_00]);
+
+        $run = app(PayrollService::class)->createRun(PayPeriod::fromKey('2025-11'));
+
+        $html = $this->actingAs($this->user())->get("/payroll/{$run->id}")->assertOk()->getContent();
+
+        $dom = new \DOMDocument;
+        @$dom->loadHTML($html);
+        $xpath = new \DOMXPath($dom);
+
+        $parse = fn (string $text): int => (int) round((float) str_replace(['₦', ',', ' '], '', $text) * 100);
+
+        $netCells = $xpath->query('//table[@data-testid="payslips"]/tbody//td[contains(@class, "num") and contains(@class, "net")]');
+        $bodySum = 0;
+        foreach ($netCells as $cell) {
+            $bodySum += $parse($cell->textContent);
+        }
+
+        $expectedNet = (int) $run->payslips()->sum('net');
+        $this->assertNotSame((int) $run->payslips()->sum('gross'), $expectedNet);
+        $this->assertSame($expectedNet, $bodySum);
+
+        $totalCell = $xpath->query('//table[@data-testid="payslips"]/tfoot//th[contains(@class, "num") and contains(@class, "net-total")]');
+        $this->assertSame(1, $totalCell->length, 'The payroll table footer has no Net pay total cell');
+
+        $total = $parse($totalCell->item(0)->textContent);
+        $this->assertSame($bodySum, $total);
+        $this->assertSame($expectedNet, $total);
     }
 
     public function test_summary_export_lists_staff_and_a_total(): void
