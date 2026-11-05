@@ -149,6 +149,9 @@ class PayrollTest extends TestCase
 
         $run = app(PayrollService::class)->createRun($period);
         $slip = $run->payslips()->first();
+        $storedBasic = $slip->basic;
+        $storedHousing = $slip->housing;
+        $storedTransport = $slip->transport;
         $storedLoan = $slip->loan;
 
         $slip->forceFill([
@@ -156,9 +159,10 @@ class PayrollTest extends TestCase
             'unpaid_leave_days' => 4,
         ])->save();
 
-        // Simulate a loan balance that has since been fully repaid, so a live
-        // recalculation would return a different loan instalment than the stored one.
-        $employee->forceFill(['loan_balance' => 0])->save();
+        // Simulate a grade change and a loan balance that has since been fully repaid,
+        // so a live recalculation would return different pay and loan amounts.
+        $newGrade = $this->grade(['basic' => 300_000_00, 'housing' => 100_000_00, 'transport' => 40_000_00]);
+        $employee->forceFill(['grade_id' => $newGrade->id, 'loan_balance' => 0])->save();
 
         app(PayrollService::class)->recomputeUnpaidLeave($period);
 
@@ -168,13 +172,12 @@ class PayrollTest extends TestCase
         $this->assertSame(2, $slip->unpaid_leave_days);
         $this->assertSame($storedLoan, $slip->loan);
 
-        $storedDaysPaid = $period->daysInMonth() - 4;
         $newDaysPaid = $period->daysInMonth() - 2;
         $ratio = $newDaysPaid / $period->daysInMonth();
 
-        $this->assertSame((int) round($grade->basic * $ratio), $slip->basic);
-        $this->assertSame((int) round($grade->housing * $ratio), $slip->housing);
-        $this->assertSame((int) round($grade->transport * $ratio), $slip->transport);
+        $this->assertSame((int) round($storedBasic * $ratio), $slip->basic);
+        $this->assertSame((int) round($storedHousing * $ratio), $slip->housing);
+        $this->assertSame((int) round($storedTransport * $ratio), $slip->transport);
 
         $expectedGross = $slip->basic + $slip->housing + $slip->transport;
         $expectedPension = (int) round($expectedGross * PayrollCalculator::PENSION_RATE);
