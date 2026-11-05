@@ -143,6 +143,7 @@ class StaffTest extends TestCase
 
         $this->actingAs($this->user())->get('/dashboard')
             ->assertOk()
-            ->assertSee('Active staff 3');
+            ->assertSee('Active staff')
+            ->assertSee('<strong class="value">3</strong>', false);
     }
 }
