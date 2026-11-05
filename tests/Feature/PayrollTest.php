@@ -133,13 +133,16 @@ class PayrollTest extends TestCase
 
     public function test_recompute_fixes_stored_payslips_created_under_old_calendar_day_rule(): void
     {
-        $grade = $this->grade(['basic' => 200_000_00, 'housing' => 70_000_00, 'transport' => 30_000_00]);
+        $grade = $this->grade(['basic' => 186_000_00, 'housing' => 62_000_00, 'transport' => 31_000_00]);
         $employee = $this->employee([
             'grade_id' => $grade->id,
             'loan_repayment' => 25_000_00,
             'loan_balance' => 100_000_00,
         ]);
         $period = PayPeriod::fromKey('2026-03');
+        $daysInMonth = $period->daysInMonth();
+        $oldDaysPaid = $daysInMonth - 4;
+        $newDaysPaid = $daysInMonth - 2;
 
         LeaveRequest::create([
             'employee_id' => $employee->id,
@@ -152,14 +155,27 @@ class PayrollTest extends TestCase
 
         $run = app(PayrollService::class)->createRun($period);
         $slip = $run->payslips()->first();
-        $storedBasic = $slip->basic;
-        $storedHousing = $slip->housing;
-        $storedTransport = $slip->transport;
         $storedLoan = $slip->loan;
 
+        // Simulate the old rule: stored money reduced by calendar days (4 days).
+        $oldBasic = (int) round($grade->basic * $oldDaysPaid / $daysInMonth);
+        $oldHousing = (int) round($grade->housing * $oldDaysPaid / $daysInMonth);
+        $oldTransport = (int) round($grade->transport * $oldDaysPaid / $daysInMonth);
+        $oldGross = $oldBasic + $oldHousing + $oldTransport;
+        $oldPension = (int) round($oldGross * PayrollCalculator::PENSION_RATE);
+        $oldTax = (int) round(TaxTable::monthlyTax($oldGross - $oldPension));
+        $oldNet = $oldGross - $oldPension - $oldTax - $storedLoan;
+
         $slip->forceFill([
-            'days_paid' => $period->daysInMonth() - 4,
+            'days_paid' => $oldDaysPaid,
             'unpaid_leave_days' => 4,
+            'basic' => $oldBasic,
+            'housing' => $oldHousing,
+            'transport' => $oldTransport,
+            'gross' => $oldGross,
+            'pension' => $oldPension,
+            'tax' => $oldTax,
+            'net' => $oldNet,
         ])->save();
 
         // Simulate a grade change and a loan balance that has since been fully repaid,
@@ -171,22 +187,21 @@ class PayrollTest extends TestCase
 
         $slip->refresh();
 
-        $this->assertSame($period->daysInMonth() - 2, $slip->days_paid);
+        $this->assertSame($newDaysPaid, $slip->days_paid);
         $this->assertSame(2, $slip->unpaid_leave_days);
         $this->assertSame($storedLoan, $slip->loan);
 
-        $newDaysPaid = $period->daysInMonth() - 2;
-        $ratio = $newDaysPaid / $period->daysInMonth();
-
-        $this->assertSame((int) round($storedBasic * $ratio), $slip->basic);
-        $this->assertSame((int) round($storedHousing * $ratio), $slip->housing);
-        $this->assertSame((int) round($storedTransport * $ratio), $slip->transport);
-
-        $expectedGross = $slip->basic + $slip->housing + $slip->transport;
+        $expectedBasic = (int) round($grade->basic * $newDaysPaid / $daysInMonth);
+        $expectedHousing = (int) round($grade->housing * $newDaysPaid / $daysInMonth);
+        $expectedTransport = (int) round($grade->transport * $newDaysPaid / $daysInMonth);
+        $expectedGross = $expectedBasic + $expectedHousing + $expectedTransport;
         $expectedPension = (int) round($expectedGross * PayrollCalculator::PENSION_RATE);
         $expectedTax = (int) round(TaxTable::monthlyTax($expectedGross - $expectedPension));
-        $expectedNet = $expectedGross - $expectedPension - $expectedTax - $slip->loan;
+        $expectedNet = $expectedGross - $expectedPension - $expectedTax - $storedLoan;
 
+        $this->assertSame($expectedBasic, $slip->basic);
+        $this->assertSame($expectedHousing, $slip->housing);
+        $this->assertSame($expectedTransport, $slip->transport);
         $this->assertSame($expectedGross, $slip->gross);
         $this->assertSame($expectedPension, $slip->pension);
         $this->assertSame($expectedTax, $slip->tax);
