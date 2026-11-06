@@ -30,7 +30,7 @@ final class Money
     /** Read a naira amount typed by a person (e.g. "₦ 25000") into kobo. */
     public static function parse(?string $value): int
     {
-        $clean = str_replace(['₦', 'NGN', ' '], '', trim((string) $value));
+        $clean = str_replace(['₦', 'NGN', ' ', ',', "\u{00A0}"], '', trim((string) $value));
 
         if ($clean === '') {
             return 0;
