@@ -15,20 +15,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 ])]
 class Employee extends Model
 {
-    protected static function booted(): void
-    {
-        // Keep the staff member's pay lines in step with their grade.
-        static::saving(function (Employee $employee) {
-            $grade = $employee->grade()->first();
-
-            if ($grade !== null) {
-                $employee->basic = $grade->basic;
-                $employee->housing = $grade->housing;
-                $employee->transport = $grade->transport;
-            }
-        });
-    }
-
     protected function casts(): array
     {
         return [
@@ -67,7 +53,9 @@ class Employee extends Model
 
     public function monthlyGross(): int
     {
-        return $this->basic + $this->housing + $this->transport;
+        $grade = $this->grade;
+
+        return $grade === null ? 0 : $grade->basic + $grade->housing + $grade->transport;
     }
 
     public function hasLeft(): bool
