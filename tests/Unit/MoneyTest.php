@@ -17,6 +17,9 @@ class MoneyTest extends TestCase
     public function test_it_reads_plain_amounts(): void
     {
         $this->assertSame(2_500_000, Money::parse('25000'));
+        $this->assertSame(2_500_000, Money::parse('25,000'));
+        $this->assertSame(2_500_000, Money::parse('25,000.00'));
+        $this->assertSame(6_000_000, Money::parse('60,000'));
         $this->assertSame(150_050, Money::parse('₦ 1500.50'));
         $this->assertSame(0, Money::parse(''));
         $this->assertSame(0, Money::parse(null));

@@ -33,6 +33,56 @@ class StaffTest extends TestCase
         $this->assertSame(0, $employee->loan_balance);
     }
 
+    public function test_editing_phone_keeps_loan_amounts(): void
+    {
+        $this->seed();
+
+        $employee = Employee::where('staff_no', 'PD-005')->firstOrFail();
+        $this->assertSame(2_500_000, $employee->loan_repayment);
+        $this->assertSame(6_000_000, $employee->loan_balance);
+
+        $this->actingAs($this->user())->put("/staff/{$employee->id}", [
+            'staff_no' => $employee->staff_no,
+            'name' => $employee->name,
+            'email' => $employee->email,
+            'phone' => '08099998888',
+            'department' => $employee->department,
+            'job_title' => $employee->job_title,
+            'grade_id' => $employee->grade_id,
+            'start_date' => '2020-11-02',
+            'bank_name' => $employee->bank_name,
+            'account_number' => $employee->account_number,
+            'loan_repayment' => '25,000.00',
+            'loan_balance' => '60,000.00',
+        ])->assertRedirect();
+
+        $employee->refresh();
+        $this->assertSame(2_500_000, $employee->loan_repayment);
+        $this->assertSame(6_000_000, $employee->loan_balance);
+
+        $this->actingAs($this->user())->get("/staff/{$employee->id}")
+            ->assertOk()
+            ->assertSee('25,000.00')
+            ->assertSee('60,000.00');
+
+        $this->actingAs($this->user())->put("/staff/{$employee->id}", [
+            'staff_no' => $employee->staff_no,
+            'name' => $employee->name,
+            'email' => $employee->email,
+            'phone' => '08099998888',
+            'department' => $employee->department,
+            'job_title' => $employee->job_title,
+            'grade_id' => $employee->grade_id,
+            'start_date' => '2020-11-02',
+            'bank_name' => $employee->bank_name,
+            'account_number' => $employee->account_number,
+            'loan_repayment' => '25,000',
+            'loan_balance' => '60,000.00',
+        ])->assertRedirect();
+
+        $this->assertSame(2_500_000, $employee->fresh()->loan_repayment);
+    }
+
     public function test_changing_grade_changes_pay(): void
     {
         $employee = $this->employee();
