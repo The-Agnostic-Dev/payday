@@ -16,9 +16,9 @@
             <h2>Pay</h2>
             <dl class="pairs" data-testid="pay">
                 <dt>Grade</dt><dd>{{ $employee->grade->code }}, {{ $employee->grade->name }}</dd>
-                <dt>Basic</dt><dd>@naira($employee->basic)</dd>
-                <dt>Housing allowance</dt><dd>@naira($employee->housing)</dd>
-                <dt>Transport allowance</dt><dd>@naira($employee->transport)</dd>
+                <dt>Basic</dt><dd>@naira($employee->grade->basic)</dd>
+                <dt>Housing allowance</dt><dd>@naira($employee->grade->housing)</dd>
+                <dt>Transport allowance</dt><dd>@naira($employee->grade->transport)</dd>
                 <dt>Monthly gross</dt><dd class="gross">@naira($employee->monthlyGross())</dd>
                 <dt>Loan repayment</dt><dd class="loan-repayment">@naira($employee->loan_repayment) a month</dd>
                 <dt>Loan balance</dt><dd class="loan-balance">@naira($employee->loan_balance)</dd>

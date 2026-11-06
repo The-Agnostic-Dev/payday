@@ -25,9 +25,11 @@ class PayrollCalculator
 
         $share = $daysPaid / $daysInMonth;
 
-        $basic = (int) round($employee->basic * $share);
-        $housing = (int) round($employee->housing * $share);
-        $transport = (int) round($employee->transport * $share);
+        $grade = $employee->grade;
+
+        $basic = (int) round(($grade?->basic ?? 0) * $share);
+        $housing = (int) round(($grade?->housing ?? 0) * $share);
+        $transport = (int) round(($grade?->transport ?? 0) * $share);
         $gross = $basic + $housing + $transport;
 
         $pension = $gross * self::PENSION_RATE;

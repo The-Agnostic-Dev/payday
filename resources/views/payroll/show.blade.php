@@ -39,7 +39,7 @@
     <table class="table" data-testid="payslips">
         <thead>
             <tr>
-                <th>Staff</th><th class="num">Days paid</th><th class="num">Gross</th><th class="num">Pension</th>
+                <th>Staff</th><th class="num">Days paid</th><th class="num">Basic</th><th class="num">Gross</th><th class="num">Pension</th>
                 <th class="num">Tax</th><th class="num">Loan</th><th class="num">Net pay</th><th></th>
             </tr>
         </thead>
@@ -48,6 +48,7 @@
                 <tr data-staff="{{ $payslip->employee->name }}">
                     <td>{{ $payslip->employee->name }} <small class="muted">{{ $payslip->employee->staff_no }}</small></td>
                     <td class="num days">{{ $payslip->days_paid }}/{{ $payslip->days_in_month }}</td>
+                    <td class="num basic">@naira($payslip->basic)</td>
                     <td class="num gross">@naira($payslip->gross)</td>
                     <td class="num pension">@naira($payslip->pension)</td>
                     <td class="num tax">@naira($payslip->tax)</td>
@@ -61,6 +62,7 @@
             <tr>
                 <th>Total</th>
                 <th></th>
+                <th class="num">@naira($payslips->sum('basic'))</th>
                 <th class="num">@naira($payslips->sum('gross'))</th>
                 <th class="num">@naira($payslips->sum('pension'))</th>
                 <th class="num">@naira($payslips->sum('tax'))</th>
