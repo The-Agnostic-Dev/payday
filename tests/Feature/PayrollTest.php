@@ -7,7 +7,9 @@ use App\Models\User;
 use App\Services\PayPeriod;
 use App\Support\Money;
 use App\Services\PayrollService;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class PayrollTest extends TestCase
@@ -125,5 +127,69 @@ class PayrollTest extends TestCase
         $this->assertStringContainsString('Ada Obi', $lines[1]);
         $this->assertStringContainsString('Bola Ade', $lines[2]);
         $this->assertStringContainsString('TOTAL', $lines[3]);
+    }
+
+    public function test_running_payroll_twice_for_the_same_month_leaves_one_draft_run(): void
+    {
+        $this->seed();
+        $user = User::where('role', User::PAYROLL)->firstOrFail();
+        $period = PayPeriod::current()->previous(3);
+
+        $this->actingAs($user)->post('/payroll', ['period' => $period->key])->assertRedirect();
+
+        $response = $this->actingAs($user)->post('/payroll', ['period' => $period->key]);
+
+        $response->assertSessionHasErrors('period');
+        $this->assertStringContainsString('already been run', session('errors')->first('period'));
+        $this->assertSame(1, PayrollRun::where('period', $period->key)->where('status', PayrollRun::DRAFT)->count());
+    }
+
+    public function test_posting_the_current_month_that_already_has_a_draft_adds_no_record(): void
+    {
+        $this->seed();
+        $user = User::where('role', User::PAYROLL)->firstOrFail();
+        $period = PayPeriod::current();
+
+        $this->assertSame(1, PayrollRun::where('period', $period->key)->count());
+
+        $response = $this->actingAs($user)->post('/payroll', ['period' => $period->key]);
+
+        $response->assertSessionHasErrors('period');
+        $this->assertStringContainsString('already been run', session('errors')->first('period'));
+        $this->assertSame(1, PayrollRun::where('period', $period->key)->count());
+    }
+
+    public function test_a_second_payroll_service_run_for_the_same_month_is_rejected(): void
+    {
+        $this->seed();
+        $user = User::where('role', User::PAYROLL)->firstOrFail();
+        $period = PayPeriod::current();
+        $thrown = null;
+
+        try {
+            app(PayrollService::class)->createRun($period, $user);
+        } catch (\Throwable $e) {
+            $thrown = $e;
+        }
+
+        $this->assertNotNull($thrown, 'A duplicate payroll run was created for a month that already has one.');
+        $this->assertSame(1, PayrollRun::where('period', $period->key)->count());
+    }
+
+    public function test_a_raw_duplicate_payroll_run_for_the_same_month_is_rejected(): void
+    {
+        $this->seed();
+        $user = User::where('role', User::PAYROLL)->firstOrFail();
+        $period = PayPeriod::current();
+
+        $this->expectException(QueryException::class);
+
+        DB::table('payroll_runs')->insert([
+            'period' => $period->key,
+            'status' => PayrollRun::DRAFT,
+            'created_by' => $user->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 }
