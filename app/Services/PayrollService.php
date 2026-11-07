@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Models\Employee;
 use App\Models\PayrollRun;
 use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class PayrollService
 {
@@ -35,11 +37,27 @@ class PayrollService
             ->values();
 
         return DB::transaction(function () use ($period, $by, $slips) {
-            $run = PayrollRun::create([
-                'period' => $period->key,
-                'status' => PayrollRun::DRAFT,
-                'created_by' => $by?->id,
-            ]);
+            if ($this->hasRun($period)) {
+                throw ValidationException::withMessages([
+                    'period' => "Payroll for {$period->label()} has already been run.",
+                ]);
+            }
+
+            try {
+                $run = PayrollRun::create([
+                    'period' => $period->key,
+                    'status' => PayrollRun::DRAFT,
+                    'created_by' => $by?->id,
+                ]);
+            } catch (QueryException $e) {
+                if ((string) $e->getCode() === '23000') {
+                    throw ValidationException::withMessages([
+                        'period' => "Payroll for {$period->label()} has already been run.",
+                    ]);
+                }
+
+                throw $e;
+            }
 
             $run->payslips()->createMany($slips->all());
 
