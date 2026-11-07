@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('payroll_runs', function (Blueprint $table) {
             $table->id();
-            $table->string('period', 7)->unique();
+            $table->string('period', 7)->index();
             $table->string('status')->default('draft');
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('approved_at')->nullable();
