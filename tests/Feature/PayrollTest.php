@@ -7,7 +7,11 @@ use App\Models\User;
 use App\Services\PayPeriod;
 use App\Support\Money;
 use App\Services\PayrollService;
+use Illuminate\Database\QueryException;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class PayrollTest extends TestCase
@@ -125,5 +129,110 @@ class PayrollTest extends TestCase
         $this->assertStringContainsString('Ada Obi', $lines[1]);
         $this->assertStringContainsString('Bola Ade', $lines[2]);
         $this->assertStringContainsString('TOTAL', $lines[3]);
+    }
+
+    public function test_running_payroll_twice_for_the_same_month_leaves_one_draft_run(): void
+    {
+        $this->seed();
+        $user = User::where('role', User::PAYROLL)->firstOrFail();
+        $period = PayPeriod::current()->previous(3);
+
+        $this->actingAs($user)->post('/payroll', ['period' => $period->key])->assertRedirect();
+
+        $response = $this->actingAs($user)->post('/payroll', ['period' => $period->key]);
+
+        $response->assertSessionHasErrors('period');
+        $this->assertStringContainsString('already been run', session('errors')->first('period'));
+        $this->assertSame(1, PayrollRun::where('period', $period->key)->where('status', PayrollRun::DRAFT)->count());
+    }
+
+    public function test_posting_the_current_month_that_already_has_a_draft_adds_no_record(): void
+    {
+        $this->seed();
+        $user = User::where('role', User::PAYROLL)->firstOrFail();
+        $period = PayPeriod::current();
+
+        $this->assertSame(1, PayrollRun::where('period', $period->key)->count());
+
+        $response = $this->actingAs($user)->post('/payroll', ['period' => $period->key]);
+
+        $response->assertSessionHasErrors('period');
+        $this->assertStringContainsString('already been run', session('errors')->first('period'));
+        $this->assertSame(1, PayrollRun::where('period', $period->key)->count());
+    }
+
+    public function test_a_second_payroll_service_run_for_the_same_month_is_rejected(): void
+    {
+        $this->seed();
+        $user = User::where('role', User::PAYROLL)->firstOrFail();
+        $period = PayPeriod::current();
+
+        try {
+            app(PayrollService::class)->createRun($period, $user);
+        } catch (\Throwable $e) {
+            //
+        }
+
+        $this->assertSame(1, PayrollRun::where('period', $period->key)->count(), 'A duplicate payroll run was created for a month that already has one.');
+    }
+
+    public function test_a_raw_duplicate_payroll_run_for_the_same_month_is_rejected(): void
+    {
+        $this->seed();
+        $user = User::where('role', User::PAYROLL)->firstOrFail();
+        $period = PayPeriod::current();
+
+        $this->expectException(QueryException::class);
+
+        DB::table('payroll_runs')->insert([
+            'period' => $period->key,
+            'status' => PayrollRun::DRAFT,
+            'created_by' => $user->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    public function test_the_period_unique_migration_cleans_duplicates_on_an_already_migrated_database(): void
+    {
+        $this->seed();
+        $user = User::where('role', User::PAYROLL)->firstOrFail();
+        $period = PayPeriod::current();
+
+        $keep = PayrollRun::where('period', $period->key)->firstOrFail();
+        $slip = $keep->payslips()->firstOrFail();
+
+        Schema::table('payroll_runs', fn (Blueprint $table) => $table->dropUnique('payroll_runs_period_unique'));
+
+        $duplicate = PayrollRun::create([
+            'period' => $period->key,
+            'status' => PayrollRun::DRAFT,
+            'created_by' => $user->id,
+        ]);
+
+        $duplicate->payslips()->create($slip->only([
+            'employee_id', 'days_in_month', 'days_paid', 'unpaid_leave_days',
+            'basic', 'housing', 'transport', 'gross', 'pension', 'tax', 'loan', 'net',
+        ]));
+
+        $this->assertSame(2, PayrollRun::where('period', $period->key)->count());
+
+        $migration = require database_path('migrations/2025_02_03_150000_add_unique_index_on_payroll_runs_period.php');
+        $migration->up();
+
+        $this->assertSame(1, PayrollRun::where('period', $period->key)->count());
+        $this->assertSame($keep->id, PayrollRun::where('period', $period->key)->value('id'));
+        $this->assertSame(0, DB::table('payslips')->where('payroll_run_id', $duplicate->id)->count());
+        $this->assertGreaterThan(0, DB::table('payslips')->where('payroll_run_id', $keep->id)->count());
+
+        $this->expectException(QueryException::class);
+
+        DB::table('payroll_runs')->insert([
+            'period' => $period->key,
+            'status' => PayrollRun::DRAFT,
+            'created_by' => $user->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 }
