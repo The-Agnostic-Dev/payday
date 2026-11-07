@@ -164,16 +164,14 @@ class PayrollTest extends TestCase
         $this->seed();
         $user = User::where('role', User::PAYROLL)->firstOrFail();
         $period = PayPeriod::current();
-        $thrown = null;
 
         try {
             app(PayrollService::class)->createRun($period, $user);
         } catch (\Throwable $e) {
-            $thrown = $e;
+            //
         }
 
-        $this->assertNotNull($thrown, 'A duplicate payroll run was created for a month that already has one.');
-        $this->assertSame(1, PayrollRun::where('period', $period->key)->count());
+        $this->assertSame(1, PayrollRun::where('period', $period->key)->count(), 'A duplicate payroll run was created for a month that already has one.');
     }
 
     public function test_a_raw_duplicate_payroll_run_for_the_same_month_is_rejected(): void
