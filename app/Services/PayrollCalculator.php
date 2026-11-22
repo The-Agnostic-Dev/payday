@@ -33,7 +33,9 @@ class PayrollCalculator
         $gross = $basic + $housing + $transport;
 
         $pension = $gross * self::PENSION_RATE;
+        $roundedPension = (int) round($pension);
         $tax = TaxTable::monthlyTax($gross - $pension);
+        $roundedTax = (int) round($tax);
         $loan = $this->loanDeduction($employee);
 
         return [
@@ -45,10 +47,10 @@ class PayrollCalculator
             'housing' => $housing,
             'transport' => $transport,
             'gross' => $gross,
-            'pension' => (int) round($pension),
-            'tax' => (int) round($tax),
+            'pension' => $roundedPension,
+            'tax' => $roundedTax,
             'loan' => $loan,
-            'net' => (int) ($gross - $pension - $tax - $loan),
+            'net' => $gross - $roundedPension - $roundedTax - $loan,
         ];
     }
 
