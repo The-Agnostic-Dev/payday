@@ -235,4 +235,34 @@ class PayrollTest extends TestCase
             'updated_at' => now(),
         ]);
     }
+
+    public function test_seeded_payslip_net_is_gross_less_total_deductions_for_two_staff(): void
+    {
+        $this->seed();
+
+        $period = PayPeriod::current()->previous();
+        $run = PayrollRun::where('period', $period->key)->firstOrFail();
+        $slips = $run->payslips()->with('employee')->get()->keyBy(fn ($slip) => $slip->employee->staff_no);
+
+        $adaeze = $slips->get('PD-004');
+        $ngozi = $slips->get('PD-006');
+
+        $this->assertNotNull($adaeze);
+        $this->assertNotNull($ngozi);
+
+        foreach ([$adaeze, $ngozi] as $slip) {
+            $this->assertSame($slip->gross - $slip->totalDeductions(), $slip->net);
+        }
+
+        $this->assertSame($adaeze->net, $ngozi->net);
+
+        $user = User::where('role', User::PAYROLL)->firstOrFail();
+
+        foreach ([$adaeze, $ngozi] as $slip) {
+            $this->actingAs($user)
+                ->get("/payslips/{$slip->id}")
+                ->assertOk()
+                ->assertSee(Money::format($slip->gross - $slip->totalDeductions()));
+        }
+    }
 }
